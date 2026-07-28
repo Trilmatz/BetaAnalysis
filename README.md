@@ -8,4 +8,6 @@ Analysis of raw data taken with beta source setup
 
 - the output file will be in the chosen directory
 
-
+Meaning of keys:
+- pmax: amplitude in mV
+- cfd: list of 7 elements with cfd for 10%, 20%, 30%, ..., 70% in ps
