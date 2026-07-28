@@ -98,8 +98,8 @@ void analisi(
     inputFileOverride = (std::string)cf.Value("HEADER", "input_filename");
   std::cout << "Anaysis of file " << inputFileOverride << " started" << endl;
   TFile *file = TFile::Open(inputFileOverride.c_str());
-  TTree *itree = dynamic_cast<TTree*>(file->Get("wfm"));
-  TTreeReader myReader("wfm", file);
+  TTree *itree = dynamic_cast<TTree*>(file->Get("waves"));
+  TTreeReader myReader("waves", file);
 
 
   if (outputFileOverride.empty())
@@ -265,8 +265,19 @@ void analisi(
 
   std::vector<TTreeReaderArray<float>> voltageReader1 ;
   std::vector<TTreeReaderArray<float>> timeReader1 ;
-  TTreeReaderArray<float> currentReader1(myReader,"i_current") ;
-  TTreeReaderArray<float> biasReader1(myReader,"v_bias") ;
+
+  auto channelBranchName = [itree](int ch_counter) -> std::string {
+    std::string lower = Form("ch%i", ch_counter);
+    if (itree->GetBranch(lower.c_str())) return lower;
+
+    std::string upper = Form("Ch%i", ch_counter);
+    if (itree->GetBranch(upper.c_str())) return upper;
+
+    std::string legacy = Form("w%i", ch_counter);
+    if (itree->GetBranch(legacy.c_str())) return legacy;
+
+    return std::string();
+  };
 
   //int enable_channel = 0;
   //for(int ch_counter=1; ch_counter<=ch_number; ch_counter++ ){
@@ -274,47 +285,36 @@ void analisi(
 
     if(active_channel[ch_counter-1]==1){
 
-      voltageReader1.push_back(TTreeReaderArray<float>(myReader, Form("w%i",ch_counter) ));  
-      timeReader1.push_back(TTreeReaderArray<float>(myReader, Form("t%i",ch_counter) ));
+      std::string voltageName = channelBranchName(ch_counter);
+      if (voltageName.empty()) {
+        std::cerr << "Missing waveform branch for channel " << ch_counter << std::endl;
+        return;
+      }
+      voltageReader1.push_back(TTreeReaderArray<float>(myReader, voltageName.c_str()));
+      timeReader1.push_back(TTreeReaderArray<float>(myReader, "time"));
 
     }    
   }
 
-  TTreeReaderValue<float> tstampReader1(myReader,"i_timestamp") ;
+  auto eventBranchName = [itree]() -> std::string {
+    if (itree->GetBranch("event")) return "event";
+    if (itree->GetBranch("evnr")) return "evnr";
+    if (itree->GetBranch("ntrig")) return "ntrig";
+    return std::string();
+  }();
+
+  if (eventBranchName.empty()) {
+    std::cerr << "Missing event branch (expected event, evnr, or ntrig)" << std::endl;
+    return;
+  }
+
+  TTreeReaderValue<ULong64_t> eventReader1(myReader, eventBranchName.c_str()) ;
 
   int ps_total = 0 ;
-  
-  for(int ps_counter=0; ps_counter<4; ps_counter++){
-
-    if(ps_channel[ps_counter] == 1){ 
-
-      //currentReader1.push_back( TTreeReaderValue<float>(myReader, Form("I%i",ps_counter) ) );
-      //biasReader1.push_back( TTreeReaderValue<float>(myReader, Form("V%i",ps_counter) ) );
-      ps_total++ ;
-
-    }
-
-  }
 
 
 
   while(myReader.Next()){
-
-    timestamp = *tstampReader1;
-    i_current.clear();
-    v_bias.clear();
-    
-    for( int ps_counter=0; ps_counter<ps_total; ps_counter++ ){
-
-      //i_current.push_back( *currentReader1.at(ps_counter) ) ;
-      //v_bias.push_back( *biasReader1.at(ps_counter) ) ;
-      i_current.push_back( currentReader1[ps_counter] ) ;
-      v_bias.push_back( biasReader1[ps_counter] ) ;
-      //i_current.push_back( 0 ) ;
-      //v_bias.push_back( 0 ) ;
-
-    }
-
 
     Pmax1.clear();
     Pmax1Fit.clear();

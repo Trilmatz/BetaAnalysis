@@ -428,7 +428,7 @@ float Analyzer::Pulse_Integration_with_Fixed_Window_Size(const std::pair<float,u
   
   float pulse_area = 0.0;
   const float time_difference = this->ptime.at(1) - this->ptime.at(0);
-  float tRange[2] = {t_beforeSignal*10e-9, t_afterSignal*10e-9};
+  float tRange[2] = {static_cast<float>(t_beforeSignal*10e-9), static_cast<float>(t_afterSignal*10e-9)};
 
   unsigned int imax = Pmax.second;
 
@@ -511,7 +511,7 @@ float Analyzer::Pulse_Integration_with_Fixed_Window_Size_with_GausFit(const std:
   
   float pulse_area = 0.0;
   const float time_difference = this->ptime.at(1) - this->ptime.at(0);
-  float tRange[2] = {t_beforeSignal*10e-9, t_afterSignal*10e-9};
+  float tRange[2] = {static_cast<float>(t_beforeSignal*10e-9), static_cast<float>(t_afterSignal*10e-9)};
 
   //unsigned int imax = Pmax.second;
 
