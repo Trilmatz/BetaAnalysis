@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <vector>
+#include <map>
+#include <set>
 #include <numeric>
 #include <functional>
 #include <sys/stat.h>
@@ -24,6 +26,7 @@
 #include "TTreeReaderValue.h"
 #include "TTreeReaderArray.h"
 #include <TBranch.h>
+#include <TLeaf.h>
 #include <TFile.h>
 #include <TH1.h>
 #include <TF1.h>
@@ -41,6 +44,12 @@
 #include "src/Analyzer.hpp"
 #include "include/ConfigFile.hpp"
 
+struct PassThroughBranch {
+  TBranch *inBranch;
+  std::string outName;
+  char typeCode;
+  alignas(8) unsigned char buffer[8];
+};
 
 void analisi(
   std::string const& configFile = "beta_config.ini",
@@ -310,6 +319,54 @@ void analisi(
 
   TTreeReaderValue<ULong64_t> eventReader1(myReader, eventBranchName.c_str()) ;
 
+  ULong64_t in_event = 0;
+  OutTree->Branch(Form("in_%s", eventBranchName.c_str()), &in_event);
+
+  const std::map<std::string, char> typeCodes = {
+    {"Char_t", 'B'}, {"UChar_t", 'b'}, {"Short_t", 'S'}, {"UShort_t", 's'},
+    {"Int_t", 'I'}, {"UInt_t", 'i'}, {"Long_t", 'G'}, {"ULong_t", 'g'},
+    {"Long64_t", 'L'}, {"ULong64_t", 'l'}, {"Float_t", 'F'}, {"Double_t", 'D'},
+    {"Bool_t", 'O'}
+  };
+
+  std::set<std::string> countLeaves;
+  for (auto *obj : *itree->GetListOfLeaves()) {
+    TLeaf *leaf = static_cast<TLeaf*>(obj);
+    if (leaf->GetLeafCount()) countLeaves.insert(leaf->GetLeafCount()->GetName());
+  }
+
+  std::vector<PassThroughBranch> passThrough;
+  for (auto *obj : *itree->GetListOfBranches()) {
+    TBranch *branch = static_cast<TBranch*>(obj);
+    std::string name = branch->GetName();
+
+    if (name == eventBranchName) continue;
+    if (branch->IsA() != TBranch::Class()) continue;
+    if (branch->GetListOfLeaves()->GetEntries() != 1) continue;
+
+    TLeaf *leaf = static_cast<TLeaf*>(branch->GetListOfLeaves()->At(0));
+    if (leaf->GetLeafCount() || leaf->GetLenStatic() != 1) continue;
+    if (countLeaves.count(leaf->GetName())) continue;
+
+    auto type = typeCodes.find(leaf->GetTypeName());
+    if (type == typeCodes.end()) {
+      std::cout << "Not copying branch " << name << " (unsupported type " << leaf->GetTypeName() << ")" << std::endl;
+      continue;
+    }
+
+    std::string outName = OutTree->GetBranch(name.c_str()) ? "in_" + name : name;
+    passThrough.push_back({branch, outName, type->second, {0}});
+  }
+
+  for (auto &pt : passThrough) {
+    pt.inBranch->SetAddress(pt.buffer);
+    OutTree->Branch(pt.outName.c_str(), pt.buffer, Form("%s/%c", pt.outName.c_str(), pt.typeCode));
+  }
+
+  std::cout << "Copying input branches:";
+  for (auto &pt : passThrough) std::cout << " " << pt.outName;
+  std::cout << " in_" << eventBranchName << std::endl;
+
   int ps_total = 0 ;
 
 
@@ -472,7 +529,9 @@ void analisi(
       continue;
 
     event=j_counter;
-    
+    in_event = *eventReader1;
+    for (auto &pt : passThrough) pt.inBranch->GetEntry(myReader.GetCurrentEntry());
+
     OutTree->Fill();
 
     if(j_counter==0) cout<<" "<<endl;
